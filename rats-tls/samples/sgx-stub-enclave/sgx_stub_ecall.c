@@ -30,6 +30,7 @@ int ecall_rtls_server_startup(sgx_enclave_id_t enclave_id, rats_tls_log_level_t 
 	snprintf(conf.crypto_type, sizeof(conf.crypto_type), "%s", crypto_type);
 	conf.enclave_id = enclave_id;
 	conf.flags = flags;
+	conf.cert_algo = RATS_TLS_CERT_ALGO_DEFAULT;
 
 	int64_t sockfd;
 	int sgx_status = ocall_socket(&sockfd, RTLS_AF_INET, RTLS_SOCK_STREAM, 0);
@@ -139,7 +140,7 @@ err:
 int ecall_rtls_client_startup(sgx_enclave_id_t enclave_id, rats_tls_log_level_t log_level,
 			      char *attester_type, char *verifier_type, char *tls_type,
 			      char *crypto_type, unsigned long flags, uint32_t s_ip,
-			      uint16_t s_port)
+			      uint16_t s_port, bool verdictd)
 {
 	rats_tls_conf_t conf;
 
@@ -151,6 +152,7 @@ int ecall_rtls_client_startup(sgx_enclave_id_t enclave_id, rats_tls_log_level_t 
 	snprintf(conf.crypto_type, sizeof(conf.crypto_type), "%s", crypto_type);
 	conf.enclave_id = enclave_id;
 	conf.flags = flags;
+	conf.cert_algo = RATS_TLS_CERT_ALGO_DEFAULT;
 
 	/* Create a socket that uses an internet IPv4 address,
 	 * Sets the socket to be stream based (TCP),
@@ -198,7 +200,12 @@ int ecall_rtls_client_startup(sgx_enclave_id_t enclave_id, rats_tls_log_level_t 
 		goto err;
 	}
 
-	const char *msg = "Hello and welcome to RATS-TLS!\n";
+	const char *msg;
+	if (verdictd)
+		msg = "{ \"command\": \"echo\", \"data\": \"Hello and welcome to RATS-TLS!\\n\" }";
+	else
+		msg = "Hello and welcome to RATS-TLS!\n";
+
 	size_t len = strlen(msg);
 	ret = rats_tls_transmit(handle, (void *)msg, &len);
 	if (ret != RATS_TLS_ERR_NONE || len != strlen(msg)) {
@@ -239,6 +246,9 @@ int ecall_rtls_client_startup(sgx_enclave_id_t enclave_id, rats_tls_log_level_t 
 		/* Server not running in SGX Enlcave will only send hello message to client */
 		RTLS_INFO("Server: %s\n", buf);
 	}
+
+	if (verdictd)
+		msg = "Hello and welcome to RATS-TLS!\n";
 
 	/* Sanity check whether the response is expected */
 	if (strcmp(msg, buf)) {
